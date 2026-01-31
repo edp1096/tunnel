@@ -16,4 +16,4 @@ ssh root@localhost -p 16822
 ```sh
 tunnel ./sample_dockge.yaml
 ```
-* Open web browser and visit http://localhost:5002
+* Then open web browser and visit http://localhost:5002
