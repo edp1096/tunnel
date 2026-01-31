@@ -1,7 +1,7 @@
 ## Run - Connect to proxy
 
 ```sh
-tunnel ./config.yaml
+tunnel ./sample_config.yaml
 ```
 
 ## Connect to server via proxy
@@ -10,3 +10,10 @@ tunnel ./config.yaml
 # ssh internal_server_user_id@localhost -p localport_in_yaml
 ssh root@localhost -p 16822
 ```
+
+## Connect to private server
+* Run - For example, [Dockge](https://github.com/louislam/dockge) is running on port 5001 inside the server, expose it to local port 5002
+```sh
+tunnel ./sample_dockge.yaml
+```
+* Open web browser and visit http://localhost:5002

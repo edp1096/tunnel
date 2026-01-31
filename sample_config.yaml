@@ -7,7 +7,7 @@ proxyserver:
   password: userpass
   privatekey: /home/username/.ssh/mykey.pem
 
-# SSH server
+# Internal server endpoint
 internalserver:
   address: 192.168.1.1
   port: 22
