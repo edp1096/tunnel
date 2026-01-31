@@ -1,3 +1,5 @@
+SSH tunnel running only with configuration file without command line option
+
 ## Run - Connect to proxy
 
 ```sh
