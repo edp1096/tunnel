@@ -1,15 +1,15 @@
-package main // import "tunnel"
+package main
 
 import (
 	_ "embed"
+	"fmt"
+	"io"
+	"log"
+	"net"
+	"os"
 	"path/filepath"
 	"strings"
 
-	"fmt"
-	"log"
-	"os"
-
-	"github.com/elliotchance/sshtunnel"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 )
@@ -60,6 +60,60 @@ func createYAML(iniPath string) {
 	os.Exit(1)
 }
 
+func getAuthMethod(config *Config) (ssh.AuthMethod, error) {
+	switch config.Proxy.AuthMethod {
+	case "password":
+		return ssh.Password(config.Proxy.Password), nil
+	case "privatekey":
+		if config.Proxy.PrivateKey == "" {
+			return nil, fmt.Errorf("privatekey is required")
+		}
+
+		pemPATH := config.Proxy.PrivateKey
+		if !filepath.IsAbs(pemPATH) {
+			if strings.HasPrefix(pemPATH, "~/") || strings.HasPrefix(pemPATH, "~\\") {
+				dirname, _ := os.UserHomeDir()
+				pemPATH = filepath.Join(dirname, pemPATH[2:])
+			}
+			pemPATH, _ = filepath.Abs(pemPATH)
+		}
+
+		key, err := os.ReadFile(pemPATH)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read private key: %v", err)
+		}
+
+		signer, err := ssh.ParsePrivateKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse private key: %v", err)
+		}
+
+		return ssh.PublicKeys(signer), nil
+	case "agent":
+		return nil, fmt.Errorf("agent auth not implemented in this version")
+	default:
+		return nil, fmt.Errorf("unknown auth method: %s", config.Proxy.AuthMethod)
+	}
+}
+
+func handleConnection(localConn net.Conn, sshClient *ssh.Client, remoteAddr string) {
+	remoteConn, err := sshClient.Dial("tcp", remoteAddr)
+	if err != nil {
+		log.Printf("Remote dial error: %v", err)
+		localConn.Close()
+		return
+	}
+
+	copyConn := func(writer, reader net.Conn) {
+		defer writer.Close()
+		defer reader.Close()
+		io.Copy(writer, reader)
+	}
+
+	go copyConn(localConn, remoteConn)
+	go copyConn(remoteConn, localConn)
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage:")
@@ -87,41 +141,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	proxyADDR := config.Proxy.Username + "@" + config.Proxy.Address + ":" + config.Proxy.Port
-	proxyPW := config.Proxy.Password
-	inADDR := config.InternalServer.Address + ":" + config.InternalServer.Port
-	authMETHOD := config.Proxy.AuthMethod
-
-	var authWAY ssh.AuthMethod
-	switch authMETHOD {
-	case "password":
-		authWAY = ssh.Password(proxyPW)
-	case "privatekey":
-		if config.Proxy.PrivateKey == "" {
-			fmt.Println("privatekey is required")
-			os.Exit(1)
-		}
-
-		pemPATH := config.Proxy.PrivateKey
-		if !filepath.IsAbs(pemPATH) {
-			if strings.HasPrefix(pemPATH, "~/") || strings.HasPrefix(pemPATH, "~\\") {
-				dirname, _ := os.UserHomeDir()
-				pemPATH = filepath.Join(dirname, pemPATH[2:])
-			}
-
-			pemPATH, _ = filepath.Abs(pemPATH)
-		}
-		authWAY = sshtunnel.PrivateKeyFile(pemPATH)
-	case "agent":
-		authWAY = sshtunnel.SSHAgent()
-	}
-
-	tunnel, err := sshtunnel.NewSSHTunnel(proxyADDR, authWAY, inADDR, config.LocalPort)
+	authMethod, err := getAuthMethod(&config)
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		log.Fatalf("Auth method error: %v", err)
 	}
 
-	tunnel.Log = log.New(os.Stdout, "", log.Ldate|log.Lmicroseconds)
-	tunnel.Start()
+	sshConfig := &ssh.ClientConfig{
+		User: config.Proxy.Username,
+		Auth: []ssh.AuthMethod{authMethod},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	proxyAddr := config.Proxy.Address + ":" + config.Proxy.Port
+	sshClient, err := ssh.Dial("tcp", proxyAddr, sshConfig)
+	if err != nil {
+		log.Fatalf("SSH connection failed: %v", err)
+	}
+	defer sshClient.Close()
+
+	localAddr := "127.0.0.1:" + config.LocalPort
+	remoteAddr := config.InternalServer.Address + ":" + config.InternalServer.Port
+
+	listener, err := net.Listen("tcp", localAddr)
+	if err != nil {
+		log.Fatalf("Local listen error: %v", err)
+	}
+	defer listener.Close()
+
+	log.Printf("Tunnel established: %s -> %s -> %s", localAddr, proxyAddr, remoteAddr)
+
+	for {
+		localConn, err := listener.Accept()
+		if err != nil {
+			log.Printf("Accept error: %v", err)
+			continue
+		}
+
+		go handleConnection(localConn, sshClient, remoteAddr)
+	}
 }
