@@ -21,5 +21,5 @@ dist:
 	go build -mod=readonly -o ./bin/ github.com/mitchellh/gox
 	go mod tidy
 	go env -w GOFLAGS=-trimpath
-	bin\gox.exe -mod="readonly" -ldflags="-X main.Version=$(version) -w -s" -output="bin/{{.Dir}}_{{.OS}}_{{.Arch}}" -osarch="windows/amd64 linux/amd64 linux/arm linux/arm64"
+	${GOX_BIN} -mod="readonly" -ldflags="-X main.Version=$(version) -w -s" -output="bin/{{.Dir}}_{{.OS}}_{{.Arch}}" -osarch="windows/amd64 linux/amd64 linux/arm linux/arm64"
 	$(RM_CMD) .$(PATH_SEP)bin$(PATH_SEP)gox*

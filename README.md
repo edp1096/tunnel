@@ -17,3 +17,10 @@ ssh root@localhost -p 16822
 tunnel ./sample_dockge.yaml
 ```
 * Then open web browser and visit http://localhost:5002
+
+
+## Build
+* Prequiisite: [Go](https://golang.org/dl/) >= 1.24
+```bash
+make
+```

@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed config.yaml
+//go:embed sample_config.yaml
 var sampleYAML string
 
 type ProxyInfo struct {
