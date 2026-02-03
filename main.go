@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
@@ -26,15 +27,16 @@ type ProxyInfo struct {
 	PrivateKey string `yaml:"privatekey"`
 }
 
-type InternalServerInfo struct {
-	Address string `yaml:"address"`
-	Port    string `yaml:"port"`
+type TunnelInfo struct {
+	Name         string `yaml:"name"`
+	InternalAddr string `yaml:"internaladdr"`
+	InternalPort string `yaml:"internalport"`
+	LocalPort    string `yaml:"localport"`
 }
 
 type Config struct {
-	Proxy          ProxyInfo          `yaml:"proxyserver"`
-	InternalServer InternalServerInfo `yaml:"internalserver"`
-	LocalPort      string             `yaml:"localport"`
+	Proxy   ProxyInfo    `yaml:"proxyserver"`
+	Tunnels []TunnelInfo `yaml:"tunnels"`
 }
 
 func createYAML(iniPath string) {
@@ -114,6 +116,32 @@ func handleConnection(localConn net.Conn, sshClient *ssh.Client, remoteAddr stri
 	go copyConn(remoteConn, localConn)
 }
 
+func startTunnel(sshClient *ssh.Client, tunnel TunnelInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	localAddr := "127.0.0.1:" + tunnel.LocalPort
+	remoteAddr := tunnel.InternalAddr + ":" + tunnel.InternalPort
+
+	listener, err := net.Listen("tcp", localAddr)
+	if err != nil {
+		log.Printf("[%s] Local listen error: %v", tunnel.Name, err)
+		return
+	}
+	defer listener.Close()
+
+	log.Printf("[%s] Tunnel established: %s -> %s", tunnel.Name, localAddr, remoteAddr)
+
+	for {
+		localConn, err := listener.Accept()
+		if err != nil {
+			log.Printf("[%s] Accept error: %v", tunnel.Name, err)
+			continue
+		}
+
+		go handleConnection(localConn, sshClient, remoteAddr)
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage:")
@@ -141,14 +169,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if len(config.Tunnels) == 0 {
+		log.Fatalf("No tunnels defined in config")
+	}
+
 	authMethod, err := getAuthMethod(&config)
 	if err != nil {
 		log.Fatalf("Auth method error: %v", err)
 	}
 
 	sshConfig := &ssh.ClientConfig{
-		User: config.Proxy.Username,
-		Auth: []ssh.AuthMethod{authMethod},
+		User:            config.Proxy.Username,
+		Auth:            []ssh.AuthMethod{authMethod},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
@@ -159,24 +191,13 @@ func main() {
 	}
 	defer sshClient.Close()
 
-	localAddr := "127.0.0.1:" + config.LocalPort
-	remoteAddr := config.InternalServer.Address + ":" + config.InternalServer.Port
+	log.Printf("SSH connected to proxy: %s", proxyAddr)
 
-	listener, err := net.Listen("tcp", localAddr)
-	if err != nil {
-		log.Fatalf("Local listen error: %v", err)
+	var wg sync.WaitGroup
+	for _, tunnel := range config.Tunnels {
+		wg.Add(1)
+		go startTunnel(sshClient, tunnel, &wg)
 	}
-	defer listener.Close()
 
-	log.Printf("Tunnel established: %s -> %s -> %s", localAddr, proxyAddr, remoteAddr)
-
-	for {
-		localConn, err := listener.Accept()
-		if err != nil {
-			log.Printf("Accept error: %v", err)
-			continue
-		}
-
-		go handleConnection(localConn, sshClient, remoteAddr)
-	}
+	wg.Wait()
 }

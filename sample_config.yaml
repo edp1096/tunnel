@@ -7,10 +7,10 @@ proxyserver:
   password: userpass
   privatekey: /home/username/.ssh/mykey.pem
 
-# Internal server endpoint
-internalserver:
-  address: 192.168.1.1
-  port: 22
-
-# Port for localhost connection
-localport: 16822
+tunnels:
+  # Internal server endpoint
+  - name: internalserver
+    internaladdr: 192.168.1.1
+    internalport: 22
+    # Port for localhost connection
+    localport: 16822

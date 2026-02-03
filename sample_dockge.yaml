@@ -8,9 +8,8 @@ proxyserver:
   privatekey: /home/username/.ssh/mykey.pem
 
 # Internal server endpoint
-internalserver:
-  address: 127.0.0.1
-  port: 5001
-
-# Port for localhost connection
-localport: 5002
+tunnels:
+  - name: dockge
+    internaladdr: 127.0.0.1
+    internalport: 5001
+    localport: 5002
