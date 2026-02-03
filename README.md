@@ -20,7 +20,7 @@ tunnel ./sample_dockge.yaml
 ```
 * Then open web browser and visit http://localhost:5002
 
-## Multiple tunneels
+## Multiple tunnels
 * See [sample_multiple.yaml](./sample_multiple.yaml).
 
 ## Build
