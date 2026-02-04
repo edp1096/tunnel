@@ -8,7 +8,7 @@ servers:
       password: userpass
       privatekey: /home/username/.ssh/mykey.pem
     tunnels:
-      - name: internalserver
+      - name: my_internalserver
         internaladdr: 192.168.1.1
         internalport: 22
         localport: 16822
