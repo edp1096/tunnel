@@ -133,7 +133,7 @@ func handleConnection(localConn net.Conn, sshClient *ssh.Client, remoteAddr stri
 	go copyConn(remoteConn, localConn)
 }
 
-func startTunnel(sshClient *ssh.Client, proxyName string, tunnel TunnelInfo, maxTagLen int, wg *sync.WaitGroup) {
+func startTunnel(sshClient *ssh.Client, proxyName string, tunnel TunnelInfo, maxTagLen int, maxLocalAddrLen int, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	tunnelName := tunnel.Name
@@ -152,7 +152,7 @@ func startTunnel(sshClient *ssh.Client, proxyName string, tunnel TunnelInfo, max
 	defer listener.Close()
 
 	tag := fmt.Sprintf("[%s:%s]", proxyName, tunnelName)
-	log.Printf("%-*s Tunnel established: %s -> %s", maxTagLen, tag, localAddr, remoteAddr)
+	log.Printf("%-*s Tunnel established: %-*s -> %s", maxTagLen, tag, maxLocalAddrLen, localAddr, remoteAddr)
 
 	for {
 		localConn, err := listener.Accept()
@@ -199,8 +199,9 @@ func startProxyServer(serverConfig ProxyConfig, wg *sync.WaitGroup) {
 	}
 	defer sshClient.Close()
 
-	// Calculate max tag length for alignment
+	// Calculate max tag length and max local address length for alignment
 	maxTagLen := len(fmt.Sprintf("[%s]", proxyName))
+	maxLocalAddrLen := 0
 	for _, tunnel := range serverConfig.Tunnels {
 		tunnelName := tunnel.Name
 		if tunnelName == "" {
@@ -210,6 +211,10 @@ func startProxyServer(serverConfig ProxyConfig, wg *sync.WaitGroup) {
 		if tagLen > maxTagLen {
 			maxTagLen = tagLen
 		}
+		localAddr := "127.0.0.1:" + tunnel.LocalPort
+		if len(localAddr) > maxLocalAddrLen {
+			maxLocalAddrLen = len(localAddr)
+		}
 	}
 
 	tag := fmt.Sprintf("[%s]", proxyName)
@@ -218,7 +223,7 @@ func startProxyServer(serverConfig ProxyConfig, wg *sync.WaitGroup) {
 	var tunnelWg sync.WaitGroup
 	for _, tunnel := range serverConfig.Tunnels {
 		tunnelWg.Add(1)
-		go startTunnel(sshClient, proxyName, tunnel, maxTagLen, &tunnelWg)
+		go startTunnel(sshClient, proxyName, tunnel, maxTagLen, maxLocalAddrLen, &tunnelWg)
 	}
 
 	tunnelWg.Wait()
