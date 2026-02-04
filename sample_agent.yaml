@@ -1,0 +1,19 @@
+# For agent authentication:
+# - Ensure SSH agent is running and SSH_AUTH_SOCK environment variable is set
+# - Add your key to the agent: ssh-add ~/.ssh/your_key
+# - Verify with: ssh-add -l
+
+servers:
+  - proxy:
+      name: ""
+      address: 192.168.0.1
+      port: 22
+      username: user
+      authmethod: agent # password or privatekey or agent
+      password: ""
+      privatekey: ""
+    tunnels:
+      - name: my_internalserver
+        internaladdr: 192.168.1.1
+        internalport: 22
+        localport: 16822
