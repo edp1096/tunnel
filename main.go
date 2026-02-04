@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"gopkg.in/yaml.v3"
 )
 
@@ -97,7 +98,18 @@ func getAuthMethod(proxy *ProxyInfo) (ssh.AuthMethod, error) {
 
 		return ssh.PublicKeys(signer), nil
 	case "agent":
-		return nil, fmt.Errorf("agent auth not implemented in this version")
+		sshAuthSock := os.Getenv("SSH_AUTH_SOCK")
+		if sshAuthSock == "" {
+			return nil, fmt.Errorf("SSH_AUTH_SOCK environment variable not set")
+		}
+
+		conn, err := net.Dial("unix", sshAuthSock)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to SSH agent: %v", err)
+		}
+
+		agentClient := agent.NewClient(conn)
+		return ssh.PublicKeysCallback(agentClient.Signers), nil
 	default:
 		return nil, fmt.Errorf("unknown auth method: %s", proxy.AuthMethod)
 	}

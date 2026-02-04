@@ -23,6 +23,11 @@ tunnel ./sample_dockge.yaml
 ## Multiple tunnels
 * See [sample_multiple.yaml](./sample_multiple.yaml).
 
+## Authentication Methods
+* `password`: Username and password
+* `privatekey`: Private key file
+* `agent`: SSH agent (requires SSH_AUTH_SOCK environment variable)
+
 ## Build
 * Prequiisite: [Go](https://golang.org/dl/) >= 1.24
 ```bash
