@@ -18,6 +18,20 @@ servers:
         internalport: 9000
         localport: 9001
 
+  - proxy:
+      name: production server
+      address: prod-server.company.com
+      port: 22
+      username: admin
+      authmethod: password
+      password: pass123
+      privatekey: ""
+    tunnels:
+      - name: app
+        internaladdr: db-server.internal
+        internalport: 3306
+        localport: 3307
+
   # IPv6 test
   - proxy:
       name: ipv6-server
