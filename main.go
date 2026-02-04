@@ -206,7 +206,7 @@ func main() {
 	}
 
 	if os.Args[1] == "-getyaml" {
-		createYAML("config_sample.yaml")
+		createYAML("sample_config.yaml")
 	}
 
 	configFile := os.Args[1]
