@@ -19,6 +19,7 @@ import (
 var sampleYAML string
 
 type ProxyInfo struct {
+	Name       string `yaml:"name"`
 	Address    string `yaml:"address"`
 	Port       string `yaml:"port"`
 	Username   string `yaml:"username"`
@@ -34,9 +35,13 @@ type TunnelInfo struct {
 	LocalPort    string `yaml:"localport"`
 }
 
-type Config struct {
-	Proxy   ProxyInfo    `yaml:"proxyserver"`
+type ProxyConfig struct {
+	Proxy   ProxyInfo    `yaml:"proxy"`
 	Tunnels []TunnelInfo `yaml:"tunnels"`
+}
+
+type Config struct {
+	Servers []ProxyConfig `yaml:"servers"`
 }
 
 func createYAML(iniPath string) {
@@ -62,16 +67,16 @@ func createYAML(iniPath string) {
 	os.Exit(1)
 }
 
-func getAuthMethod(config *Config) (ssh.AuthMethod, error) {
-	switch config.Proxy.AuthMethod {
+func getAuthMethod(proxy *ProxyInfo) (ssh.AuthMethod, error) {
+	switch proxy.AuthMethod {
 	case "password":
-		return ssh.Password(config.Proxy.Password), nil
+		return ssh.Password(proxy.Password), nil
 	case "privatekey":
-		if config.Proxy.PrivateKey == "" {
+		if proxy.PrivateKey == "" {
 			return nil, fmt.Errorf("privatekey is required")
 		}
 
-		pemPATH := config.Proxy.PrivateKey
+		pemPATH := proxy.PrivateKey
 		if !filepath.IsAbs(pemPATH) {
 			if strings.HasPrefix(pemPATH, "~/") || strings.HasPrefix(pemPATH, "~\\") {
 				dirname, _ := os.UserHomeDir()
@@ -94,7 +99,7 @@ func getAuthMethod(config *Config) (ssh.AuthMethod, error) {
 	case "agent":
 		return nil, fmt.Errorf("agent auth not implemented in this version")
 	default:
-		return nil, fmt.Errorf("unknown auth method: %s", config.Proxy.AuthMethod)
+		return nil, fmt.Errorf("unknown auth method: %s", proxy.AuthMethod)
 	}
 }
 
@@ -116,30 +121,80 @@ func handleConnection(localConn net.Conn, sshClient *ssh.Client, remoteAddr stri
 	go copyConn(remoteConn, localConn)
 }
 
-func startTunnel(sshClient *ssh.Client, tunnel TunnelInfo, wg *sync.WaitGroup) {
+func startTunnel(sshClient *ssh.Client, proxyName string, tunnel TunnelInfo, wg *sync.WaitGroup) {
 	defer wg.Done()
 
+	tunnelName := tunnel.Name
+	if tunnelName == "" {
+		tunnelName = tunnel.InternalAddr
+	}
+
 	localAddr := "127.0.0.1:" + tunnel.LocalPort
-	remoteAddr := tunnel.InternalAddr + ":" + tunnel.InternalPort
+	remoteAddr := net.JoinHostPort(tunnel.InternalAddr, tunnel.InternalPort)
 
 	listener, err := net.Listen("tcp", localAddr)
 	if err != nil {
-		log.Printf("[%s] Local listen error: %v", tunnel.Name, err)
+		log.Printf("[%s:%s] Local listen error: %v", proxyName, tunnelName, err)
 		return
 	}
 	defer listener.Close()
 
-	log.Printf("[%s] Tunnel established: %s -> %s", tunnel.Name, localAddr, remoteAddr)
+	log.Printf("[%s:%s] Tunnel established: %s -> %s", proxyName, tunnelName, localAddr, remoteAddr)
 
 	for {
 		localConn, err := listener.Accept()
 		if err != nil {
-			log.Printf("[%s] Accept error: %v", tunnel.Name, err)
+			log.Printf("[%s:%s] Accept error: %v", proxyName, tunnelName, err)
 			continue
 		}
 
 		go handleConnection(localConn, sshClient, remoteAddr)
 	}
+}
+
+func startProxyServer(serverConfig ProxyConfig, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	proxy := serverConfig.Proxy
+	proxyName := proxy.Name
+	if proxyName == "" {
+		proxyName = proxy.Address
+	}
+
+	if len(serverConfig.Tunnels) == 0 {
+		log.Printf("[%s] No tunnels defined, skipping", proxyName)
+		return
+	}
+
+	authMethod, err := getAuthMethod(&proxy)
+	if err != nil {
+		log.Printf("[%s] Auth method error: %v", proxyName, err)
+		return
+	}
+
+	sshConfig := &ssh.ClientConfig{
+		User:            proxy.Username,
+		Auth:            []ssh.AuthMethod{authMethod},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	proxyAddr := net.JoinHostPort(proxy.Address, proxy.Port)
+	sshClient, err := ssh.Dial("tcp", proxyAddr, sshConfig)
+	if err != nil {
+		log.Printf("[%s] SSH connection failed: %v", proxyName, err)
+		return
+	}
+	defer sshClient.Close()
+
+	log.Printf("[%s] SSH connected to: %s", proxyName, proxyAddr)
+
+	var tunnelWg sync.WaitGroup
+	for _, tunnel := range serverConfig.Tunnels {
+		tunnelWg.Add(1)
+		go startTunnel(sshClient, proxyName, tunnel, &tunnelWg)
+	}
+
+	tunnelWg.Wait()
 }
 
 func main() {
@@ -169,34 +224,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if len(config.Tunnels) == 0 {
-		log.Fatalf("No tunnels defined in config")
+	if len(config.Servers) == 0 {
+		log.Fatalf("No servers defined in config")
 	}
-
-	authMethod, err := getAuthMethod(&config)
-	if err != nil {
-		log.Fatalf("Auth method error: %v", err)
-	}
-
-	sshConfig := &ssh.ClientConfig{
-		User:            config.Proxy.Username,
-		Auth:            []ssh.AuthMethod{authMethod},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-	}
-
-	proxyAddr := config.Proxy.Address + ":" + config.Proxy.Port
-	sshClient, err := ssh.Dial("tcp", proxyAddr, sshConfig)
-	if err != nil {
-		log.Fatalf("SSH connection failed: %v", err)
-	}
-	defer sshClient.Close()
-
-	log.Printf("SSH connected to proxy: %s", proxyAddr)
 
 	var wg sync.WaitGroup
-	for _, tunnel := range config.Tunnels {
+	for _, serverConfig := range config.Servers {
 		wg.Add(1)
-		go startTunnel(sshClient, tunnel, &wg)
+		go startProxyServer(serverConfig, &wg)
 	}
 
 	wg.Wait()

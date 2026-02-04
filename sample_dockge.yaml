@@ -1,15 +1,14 @@
-# Proxy SSH server
-proxyserver:
-  address: 192.168.10.6
-  port: 22
-  username: edp1096
-  authmethod: password # password or privatekey or agent
-  password: ssh_passwd_!2345
-  privatekey: /home/username/.ssh/mykey.pem
-
-# Internal server endpoint
-tunnels:
-  - name: dockge
-    internaladdr: 127.0.0.1
-    internalport: 5001
-    localport: 5002
+servers:
+  - proxy:
+      name: ""
+      address: 192.168.10.6
+      port: 22
+      username: edp1096
+      authmethod: password
+      password: ssh_passwd_!2345
+      privatekey: /home/username/.ssh/mykey.pem
+    tunnels:
+      - name: dockge
+        internaladdr: 127.0.0.1
+        internalport: 5001
+        localport: 5002

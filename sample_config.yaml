@@ -1,16 +1,14 @@
-# Proxy SSH server
-proxyserver:
-  address: 192.168.0.1
-  port: 22
-  username: user
-  authmethod: privatekey # password or privatekey or agent
-  password: userpass
-  privatekey: /home/username/.ssh/mykey.pem
-
-tunnels:
-  # Internal server endpoint
-  - name: internalserver
-    internaladdr: 192.168.1.1
-    internalport: 22
-    # Port for localhost connection
-    localport: 16822
+servers:
+  - proxy:
+      name: ""
+      address: 192.168.0.1
+      port: 22
+      username: user
+      authmethod: privatekey # password or privatekey or agent
+      password: userpass
+      privatekey: /home/username/.ssh/mykey.pem
+    tunnels:
+      - name: internalserver
+        internaladdr: 192.168.1.1
+        internalport: 22
+        localport: 16822
